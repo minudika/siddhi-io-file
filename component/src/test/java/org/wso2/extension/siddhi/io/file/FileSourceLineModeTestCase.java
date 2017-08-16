@@ -656,4 +656,103 @@ public class FileSourceLineModeTestCase {
 
         siddhiAppRuntime.shutdown();
     }
+
+    @Test
+    public void siddhiIoFileTest10() throws InterruptedException {
+        log.info("test SiddhiIoFile [mode=line] Test 10");
+        String streams = "" +
+                "@App:name('TestSiddhiApp')" +
+                "@source(type='file', mode='line'," +
+                "file.uri='" + dirUri + "/line/json/logs.txt', " +
+                "tailing='true', " +
+                "@map(type='json'))" +
+                "define stream FooStream (symbol string, price float, volume long); " +
+                "define stream BarStream (symbol string, price float, volume long); ";
+
+        String query = "" +
+                "from FooStream " +
+                "select * " +
+                "insert into BarStream; ";
+
+        SiddhiManager siddhiManager = new SiddhiManager();
+        SiddhiAppRuntime siddhiAppRuntime = siddhiManager.createSiddhiAppRuntime(streams + query);
+
+        siddhiAppRuntime.addCallback("BarStream", new StreamCallback() {
+
+            @Override
+            public void receive(Event[] events) {
+                EventPrinter.print(events);
+                int n = count.incrementAndGet();
+                for (Event event : events) {
+                    switch (n) {
+                        case 1:
+                            AssertJUnit.assertEquals(10000L, event.getData(2));
+                            break;
+                        case 2:
+                            AssertJUnit.assertEquals(10001L, event.getData(2));
+                            break;
+                        case 3:
+                            AssertJUnit.assertEquals(10002L, event.getData(2));
+                            break;
+                        case 4:
+                            AssertJUnit.assertEquals(10003L, event.getData(2));
+                            break;
+                        case 5:
+                            AssertJUnit.assertEquals(10004L, event.getData(2));
+                            break;
+                        case 6:
+                            AssertJUnit.assertEquals(20000L, event.getData(2));
+                            break;
+                        case 7:
+                            AssertJUnit.assertEquals(20001L, event.getData(2));
+                            break;
+                        case 8:
+                            AssertJUnit.assertEquals(20002L, event.getData(2));
+                            break;
+                        default:
+                            AssertJUnit.fail("More events received than expected.");
+                    }
+                }
+            }
+        });
+
+        System.err.println("Starting runtime for the 1st time.");
+        siddhiAppRuntime.start();
+        SiddhiTestHelper.waitForEvents(waitTime, 5, count, timeout);
+
+        //System.err.println("Getting snapshot");
+        byte[] snapshot= siddhiAppRuntime.snapshot();
+        //System.err.println("shutting down the runtime");
+        siddhiAppRuntime.shutdown();
+
+        //Thread.sleep(3000);
+        File file = new File(dirUri + "/line/json/logs.txt");
+        try {
+            BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(file));
+            bufferedWriter.write("{\"event\":{\"symbol\":\"IBM\",\"price\":20,\"volume\":20000}}");
+            bufferedWriter.newLine();
+            bufferedWriter.write("{\"event\":{\"symbol\":\"IBM\",\"price\":21,\"volume\":20001}}");
+            bufferedWriter.newLine();
+            bufferedWriter.write("{\"event\":{\"symbol\":\"IBM\",\"price\":22,\"volume\":20002}}");
+            bufferedWriter.newLine();
+            bufferedWriter.flush();
+            bufferedWriter.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        //System.err.println("Restoring snapshot.");
+        siddhiAppRuntime.restore(snapshot);
+
+        //System.err.println("Restarting runtime.");
+        siddhiAppRuntime.start();
+        // siddhiAppRuntime.restoreLastRevision();
+
+        SiddhiTestHelper.waitForEvents(waitTime, 8, count, timeout);
+
+        //assert event count
+        AssertJUnit.assertEquals("Number of events", 8, count.get());
+        //System.err.println("Shutting down..");
+        siddhiAppRuntime.shutdown();
+    }
 }
